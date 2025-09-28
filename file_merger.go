@@ -1,0 +1,116 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+)
+
+func listFiles(projectDir string) ([]string, error) {
+    var files []string
+    err := filepath.WalkDir(projectDir, func(path string, d fs.DirEntry, err error) error {
+        if err != nil {
+            return err
+        }
+        if !d.IsDir() {
+            relPath, err := filepath.Rel(projectDir, path)
+            if err != nil {
+                return err
+            }
+            files = append(files, relPath)
+        }
+        return nil
+    })
+    return files, err
+}
+
+func chooseFiles(files []string) ([]string, error) {
+    fmt.Println("Available files:")
+    for idx, file := range files {
+        fmt.Printf("[%d] %s\n", idx, file)
+    }
+
+    fmt.Print("Enter the indices of files to include (comma separated): ")
+    reader := bufio.NewReader(os.Stdin)
+    input, err := reader.ReadString('\n')
+    if err != nil {
+        return nil, err
+    }
+
+    input = strings.TrimSpace(input)
+    indices := strings.Split(input, ",")
+
+    var chosen []string
+    for _, idxStr := range indices {
+        idxStr = strings.TrimSpace(idxStr)
+        if idx, err := strconv.Atoi(idxStr); err == nil && idx >= 0 && idx < len(files) {
+            chosen = append(chosen, files[idx])
+        }
+    }
+
+    return chosen, nil
+}
+
+func writeDataFile(projectDir string, chosenFiles []string, outputFile string) error {
+    out, err := os.Create(outputFile)
+    if err != nil {
+        return err
+    }
+    defer out.Close()
+
+    writer := bufio.NewWriter(out)
+    for _, file := range chosenFiles {
+        fmt.Fprintf(writer, "// %s\n", file)
+        content, err := os.ReadFile(filepath.Join(projectDir, file))
+        if err != nil {
+            fmt.Fprintf(writer, "[Error reading %s: %v]\n", file, err)
+        } else {
+            writer.Write(content)
+        }
+        writer.WriteString("\n\n")
+    }
+    return writer.Flush()
+}
+
+func main() {
+    reader := bufio.NewReader(os.Stdin)
+    fmt.Print("Enter project directory path: ")
+    projectDir, _ := reader.ReadString('\n')
+    projectDir = strings.TrimSpace(projectDir)
+
+    fi, err := os.Stat(projectDir)
+    if err != nil || !fi.IsDir() {
+        fmt.Println("Invalid directory path.")
+        return
+    }
+
+    files, err := listFiles(projectDir)
+    if err != nil {
+        fmt.Println("Error listing files:", err)
+        return
+    }
+    if len(files) == 0 {
+        fmt.Println("No files found in the given directory.")
+        return
+    }
+
+    chosen, err := chooseFiles(files)
+    if err != nil {
+        fmt.Println("Error choosing files:", err)
+        return
+    }
+    if len(chosen) == 0 {
+        fmt.Println("No files selected.")
+        return
+    }
+
+    if err := writeDataFile(projectDir, chosen, "data.txt"); err != nil {
+        fmt.Println("Error writing data.txt:", err)
+    } else {
+        fmt.Println("Data written to data.txt")
+    }
+}
