@@ -10,17 +10,64 @@ import (
 	"strings"
 )
 
-func listFiles(projectDir string) ([]string, error) {
+func loadIgnorePatterns(projectDir string) ([]string, error) {
+    ignoreFile := filepath.Join(projectDir, ".ignore")
+    var patterns []string
+
+    data, err := os.ReadFile(ignoreFile)
+    if err != nil {
+        if os.IsNotExist(err) {
+            return patterns, nil // no ignore file, return empty
+        }
+        return nil, err
+    }
+
+    lines := strings.Split(string(data), "\n")
+    for _, line := range lines {
+        line = strings.TrimSpace(line)
+        if line == "" || strings.HasPrefix(line, "#") {
+            continue
+        }
+        patterns = append(patterns, line)
+    }
+    return patterns, nil
+}
+
+func shouldIgnore(relPath string, patterns []string) bool {
+    for _, pattern := range patterns {
+        // normalize to forward slashes for matching
+        relPathUnix := filepath.ToSlash(relPath)
+
+        // match direct file or dir
+        if ok, _ := filepath.Match(pattern, relPathUnix); ok {
+            return true
+        }
+        // prefix match for directories (e.g. dir/)
+        if strings.HasSuffix(pattern, "/") && strings.HasPrefix(relPathUnix, pattern) {
+            return true
+        }
+        // fallback: match basename
+        if ok, _ := filepath.Match(pattern, filepath.Base(relPathUnix)); ok {
+            return true
+        }
+    }
+    return false
+}
+
+func listFiles(projectDir string, patterns []string) ([]string, error) {
     var files []string
     err := filepath.WalkDir(projectDir, func(path string, d fs.DirEntry, err error) error {
         if err != nil {
             return err
         }
-        if !d.IsDir() {
-            relPath, err := filepath.Rel(projectDir, path)
-            if err != nil {
-                return err
-            }
+        if d.IsDir() {
+            return nil
+        }
+        relPath, err := filepath.Rel(projectDir, path)
+        if err != nil {
+            return err
+        }
+        if !shouldIgnore(relPath, patterns) {
             files = append(files, relPath)
         }
         return nil
@@ -42,8 +89,11 @@ func chooseFiles(files []string) ([]string, error) {
     }
 
     input = strings.TrimSpace(input)
-    indices := strings.Split(input, ",")
+    if input == "*" { // select all files
+        return files, nil
+    }
 
+    indices := strings.Split(input, ",")
     var chosen []string
     for _, idxStr := range indices {
         idxStr = strings.TrimSpace(idxStr)
@@ -88,7 +138,13 @@ func main() {
         return
     }
 
-    files, err := listFiles(projectDir)
+    patterns, err := loadIgnorePatterns(projectDir)
+    if err != nil {
+        fmt.Println("Error loading .ignore:", err)
+        return
+    }
+
+    files, err := listFiles(projectDir, patterns)
     if err != nil {
         fmt.Println("Error listing files:", err)
         return
