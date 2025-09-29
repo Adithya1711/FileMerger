@@ -35,18 +35,14 @@ func loadIgnorePatterns(projectDir string) ([]string, error) {
 
 func shouldIgnore(relPath string, patterns []string) bool {
     for _, pattern := range patterns {
-        // normalize to forward slashes for matching
         relPathUnix := filepath.ToSlash(relPath)
 
-        // match direct file or dir
         if ok, _ := filepath.Match(pattern, relPathUnix); ok {
             return true
         }
-        // prefix match for directories (e.g. dir/)
         if strings.HasSuffix(pattern, "/") && strings.HasPrefix(relPathUnix, pattern) {
             return true
         }
-        // fallback: match basename
         if ok, _ := filepath.Match(pattern, filepath.Base(relPathUnix)); ok {
             return true
         }
@@ -81,7 +77,7 @@ func chooseFiles(files []string) ([]string, error) {
         fmt.Printf("[%d] %s\n", idx, file)
     }
 
-    fmt.Print("Enter the indices of files to include (comma separated): ")
+    fmt.Print("Enter the indices of files to include (comma separated, * for all, * !1,2 to exclude): ")
     reader := bufio.NewReader(os.Stdin)
     input, err := reader.ReadString('\n')
     if err != nil {
@@ -89,8 +85,33 @@ func chooseFiles(files []string) ([]string, error) {
     }
 
     input = strings.TrimSpace(input)
-    if input == "*" { // select all files
-        return files, nil
+
+    if strings.HasPrefix(input, "*") {
+        chosen := make([]string, len(files))
+        copy(chosen, files)
+
+        if strings.Contains(input, "!") {
+            parts := strings.Split(input, "!")
+            if len(parts) > 1 {
+                excludeStr := strings.TrimSpace(parts[1])
+                excludeIndices := strings.Split(excludeStr, ",")
+                excludeMap := make(map[int]bool)
+                for _, idxStr := range excludeIndices {
+                    idxStr = strings.TrimSpace(idxStr)
+                    if idx, err := strconv.Atoi(idxStr); err == nil && idx >= 0 && idx < len(files) {
+                        excludeMap[idx] = true
+                    }
+                }
+                var filtered []string
+                for i, f := range files {
+                    if !excludeMap[i] {
+                        filtered = append(filtered, f)
+                    }
+                }
+                return filtered, nil
+            }
+        }
+        return chosen, nil
     }
 
     indices := strings.Split(input, ",")
