@@ -10,14 +10,19 @@ import (
 	"strings"
 )
 
-func loadIgnorePatterns(projectDir string) ([]string, error) {
+type IgnoreRule struct {
+    Pattern  string
+    Negation bool
+}
+
+func loadIgnorePatterns(projectDir string) ([]IgnoreRule, error) {
     ignoreFile := filepath.Join(projectDir, ".ignore")
-    var patterns []string
+    var rules []IgnoreRule
 
     data, err := os.ReadFile(ignoreFile)
     if err != nil {
         if os.IsNotExist(err) {
-            return patterns, nil // no ignore file, return empty
+            return rules, nil // no ignore file, return empty
         }
         return nil, err
     }
@@ -28,29 +33,42 @@ func loadIgnorePatterns(projectDir string) ([]string, error) {
         if line == "" || strings.HasPrefix(line, "#") {
             continue
         }
-        patterns = append(patterns, line)
+        negation := false
+        if strings.HasPrefix(line, "!") {
+            negation = true
+            line = strings.TrimSpace(line[1:])
+        }
+        rules = append(rules, IgnoreRule{Pattern: line, Negation: negation})
     }
-    return patterns, nil
+    return rules, nil
 }
 
-func shouldIgnore(relPath string, patterns []string) bool {
-    for _, pattern := range patterns {
-        relPathUnix := filepath.ToSlash(relPath)
+func shouldIgnore(relPath string, rules []IgnoreRule) bool {
+    relPathUnix := filepath.ToSlash(relPath)
+    ignored := false
 
-        if ok, _ := filepath.Match(pattern, relPathUnix); ok {
-            return true
+    for _, rule := range rules {
+        matched := false
+        if ok, _ := filepath.Match(rule.Pattern, relPathUnix); ok {
+            matched = true
+        } else if strings.HasSuffix(rule.Pattern, "/") && strings.HasPrefix(relPathUnix, rule.Pattern) {
+            matched = true
+        } else if ok, _ := filepath.Match(rule.Pattern, filepath.Base(relPathUnix)); ok {
+            matched = true
         }
-        if strings.HasSuffix(pattern, "/") && strings.HasPrefix(relPathUnix, pattern) {
-            return true
-        }
-        if ok, _ := filepath.Match(pattern, filepath.Base(relPathUnix)); ok {
-            return true
+
+        if matched {
+            if rule.Negation {
+                ignored = false // re-include
+            } else {
+                ignored = true // exclude
+            }
         }
     }
-    return false
+    return ignored
 }
 
-func listFiles(projectDir string, patterns []string) ([]string, error) {
+func listFiles(projectDir string, rules []IgnoreRule) ([]string, error) {
     var files []string
     err := filepath.WalkDir(projectDir, func(path string, d fs.DirEntry, err error) error {
         if err != nil {
@@ -63,7 +81,7 @@ func listFiles(projectDir string, patterns []string) ([]string, error) {
         if err != nil {
             return err
         }
-        if !shouldIgnore(relPath, patterns) {
+        if !shouldIgnore(relPath, rules) {
             files = append(files, relPath)
         }
         return nil
@@ -192,13 +210,13 @@ func main() {
         return
     }
 
-    patterns, err := loadIgnorePatterns(projectDir)
+    rules, err := loadIgnorePatterns(projectDir)
     if err != nil {
         fmt.Println("Error loading .ignore:", err)
         return
     }
 
-    files, err := listFiles(projectDir, patterns)
+    files, err := listFiles(projectDir, rules)
     if err != nil {
         fmt.Println("Error listing files:", err)
         return
