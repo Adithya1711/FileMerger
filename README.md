@@ -32,23 +32,45 @@ A lightweight command-line tool written in Go that helps you collect file conten
 
 1. Make sure you have [Go installed](https://go.dev/dl/).
 2. Clone this repository or copy the source file.
-3. Build the binary:
+3. Build the binary depending on your platform:
 
-   ```bash
-   go build -o filemerger main.go
-   ```
+   - **Linux/macOS**:
+
+     ```bash
+     go build -o filemerger main.go
+     ```
+
+   - **Windows**:
+
+     ````bash
+     go build -o filemerger.exe main.go
+     ```
+     ````
 
 ---
 
 ## Usage
 
-Run the tool from the command line:
+After building, the compiled binary (`filemerger.exe` on Windows, `filemerger` on Linux/macOS) will be created in the current folder. To run it, you have two options:
 
-```bash
-./filemerger
-```
+1. **Run from the same folder** – Keep the binary in your project folder and run:
 
-You will be prompted to enter a project directory path. The tool will then:
+   ```bash
+   ./filemerger
+   ```
+
+   > ⚠️ Make sure the binary is present in the same folder where you run the command.
+
+2. **Add to PATH** – To reuse the tool from anywhere:
+
+   - Move the binary to a directory that is already in your system `PATH` (e.g., `/usr/local/bin` on Linux/macOS or a folder listed in the Windows PATH environment variable).
+   - Then you can run it directly from any working directory:
+
+     ```bash
+     filemerger
+     ```
+
+The tool will then:
 
 1. List all files (excluding those ignored).
 2. Ask you which files to include using the selection syntax.
