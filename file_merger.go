@@ -71,13 +71,40 @@ func listFiles(projectDir string, patterns []string) ([]string, error) {
     return files, err
 }
 
+func parseExclusions(excludeStr string, max int) map[int]bool {
+    excludeMap := make(map[int]bool)
+    parts := strings.Split(excludeStr, ",")
+    for _, p := range parts {
+        p = strings.TrimSpace(p)
+        if strings.Contains(p, "-") { // range like 1-3
+            bounds := strings.SplitN(p, "-", 2)
+            if len(bounds) == 2 {
+                start, err1 := strconv.Atoi(strings.TrimSpace(bounds[0]))
+                end, err2 := strconv.Atoi(strings.TrimSpace(bounds[1]))
+                if err1 == nil && err2 == nil && start <= end {
+                    for i := start; i <= end; i++ {
+                        if i >= 0 && i < max {
+                            excludeMap[i] = true
+                        }
+                    }
+                }
+            }
+        } else { // single index
+            if idx, err := strconv.Atoi(p); err == nil && idx >= 0 && idx < max {
+                excludeMap[idx] = true
+            }
+        }
+    }
+    return excludeMap
+}
+
 func chooseFiles(files []string) ([]string, error) {
     fmt.Println("Available files:")
     for idx, file := range files {
         fmt.Printf("[%d] %s\n", idx, file)
     }
 
-    fmt.Print("Enter the indices of files to include (comma separated, * for all, * !1,2 to exclude): ")
+    fmt.Print("Enter the indices of files to include (comma separated, * for all, * !1,2 or * !1-3 to exclude): ")
     reader := bufio.NewReader(os.Stdin)
     input, err := reader.ReadString('\n')
     if err != nil {
@@ -94,14 +121,7 @@ func chooseFiles(files []string) ([]string, error) {
             parts := strings.Split(input, "!")
             if len(parts) > 1 {
                 excludeStr := strings.TrimSpace(parts[1])
-                excludeIndices := strings.Split(excludeStr, ",")
-                excludeMap := make(map[int]bool)
-                for _, idxStr := range excludeIndices {
-                    idxStr = strings.TrimSpace(idxStr)
-                    if idx, err := strconv.Atoi(idxStr); err == nil && idx >= 0 && idx < len(files) {
-                        excludeMap[idx] = true
-                    }
-                }
+                excludeMap := parseExclusions(excludeStr, len(files))
                 var filtered []string
                 for i, f := range files {
                     if !excludeMap[i] {
@@ -118,7 +138,20 @@ func chooseFiles(files []string) ([]string, error) {
     var chosen []string
     for _, idxStr := range indices {
         idxStr = strings.TrimSpace(idxStr)
-        if idx, err := strconv.Atoi(idxStr); err == nil && idx >= 0 && idx < len(files) {
+        if strings.Contains(idxStr, "-") { // range like 2-5
+            bounds := strings.SplitN(idxStr, "-", 2)
+            if len(bounds) == 2 {
+                start, err1 := strconv.Atoi(strings.TrimSpace(bounds[0]))
+                end, err2 := strconv.Atoi(strings.TrimSpace(bounds[1]))
+                if err1 == nil && err2 == nil && start <= end {
+                    for i := start; i <= end; i++ {
+                        if i >= 0 && i < len(files) {
+                            chosen = append(chosen, files[i])
+                        }
+                    }
+                }
+            }
+        } else if idx, err := strconv.Atoi(idxStr); err == nil && idx >= 0 && idx < len(files) {
             chosen = append(chosen, files[idx])
         }
     }
